@@ -11,7 +11,7 @@ A valid word will:
 
 My solution:
 At first glance it seems like a simple dictionary problem,
-Initial guess would be to fetch the list of essays, get the articleBody and
+Initial attempt will be to fetch the list of essays, get the articleBody and
 clean it up (remove punctuation, special characters, etc),
 then tokenize the articleBody into words and validate each word against the rules,
 store each word in a map with value as the count of the word,
