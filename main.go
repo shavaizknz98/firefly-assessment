@@ -45,7 +45,6 @@ finally sort the map by value and print the top 10 words.
 This can be improved by fetching the list of essays concurrently, and processing each essay concurrently,
 the dictionary can be a "global" map that is shared by all the goroutines, and we can use a mutex to lock when writing.
 
-
 There are some considerations to be made:
 1. Cannot spin up too many goroutines as this could cause memory issues and also cause rate limiting
 2. Cannot make too many requests at once as well, as again this could cause rate limiting
@@ -56,7 +55,6 @@ Solutions for the above are:
 
 However due to engadgets policies you may still be rate limited if you run the script too often at once, in that case a log is placed
 */
-
 func main() {
 	// Get word bank from URL given in assignment
 	wordBank := getWordBank(WordBankUrl)
@@ -68,6 +66,8 @@ func main() {
 
 	// Compile regex for valid words so that it can be used later
 	regExpression := regexp.MustCompile(`\b[a-z]{3,}\b`)
+
+	// word map to store the count of each word, made global so all goroutines can read/write concurrently
 	wordMap := make(map[string]int, 0)
 
 	// Concurrently process 2000 essays at a time to avoid too many goroutines and rate limit issues with engagdet
@@ -114,12 +114,55 @@ func main() {
 	log.Println(string(prettyJson))
 }
 
-func processEssay(wordMap *map[string]int, words *[]string) {
-	for _, word := range *words {
-		(*wordMap)[word]++
+/*
+Fetch the wordbank from URL given, this is a list of all words that are valid.
+However they may be words in this list invalidated by regex rules as part of word validations
+*/
+func getWordBank(url string) *map[string]struct{} {
+	wordBank := map[string]struct{}{}
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		word := strings.ToLower(scanner.Text())
+		wordBank[word] = struct{}{}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	return &wordBank
 }
 
+// Read local file for list of URLs containing articles/essays
+func getEssays(filePath string) *[]string {
+	var essays []string
+
+	// Fetch from local file
+	f, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	essays = strings.Split(string(f), "\n")
+
+	return &essays
+}
+
+// Fetch all valid words from the articleBody in essay HTML
 func fetchWordsFromEssay(essayUrl string, wordBank *map[string]struct{}, regExpression *regexp.Regexp) *[]string {
 	// sleep for random amount of time between 200-1000 msec to avoid being rate limited
 	time.Sleep(time.Duration(rand.Intn(800)+200) * time.Millisecond)
@@ -179,49 +222,14 @@ func fetchWordsFromEssay(essayUrl string, wordBank *map[string]struct{}, regExpr
 	return &validEssayWords
 }
 
-func getWordBank(url string) *map[string]struct{} {
-	wordBank := map[string]struct{}{}
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Fatal(err)
+// Update the wordMap with list of validated words within essay. wordMap key are valid words and value is the count
+func processEssay(wordMap *map[string]int, words *[]string) {
+	for _, word := range *words {
+		(*wordMap)[word]++
 	}
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer resp.Body.Close()
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		word := strings.ToLower(scanner.Text())
-		wordBank[word] = struct{}{}
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	return &wordBank
 }
 
-func getEssays(filePath string) *[]string {
-	var essays []string
-
-	// Fetch from local file
-	f, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	essays = strings.Split(string(f), "\n")
-
-	return &essays
-}
-
+// Sort wordMap by value and return only top 10
 func sortWordMap(wordMap *map[string]int) *map[string]int {
 	var wordMapSlice []WordCount
 	for k, v := range *wordMap {
