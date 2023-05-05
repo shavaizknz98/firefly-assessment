@@ -17,6 +17,7 @@ import (
 )
 
 const WordBankUrl = "https://raw.githubusercontent.com/dwyl/english-words/master/words.txt"
+const MaxGoRoutines = 1000
 
 type WordCount struct {
 	Word  string `json:"word"`
@@ -50,7 +51,7 @@ There are some considerations to be made:
 2. Cannot make too many requests at once as well, as again this could cause rate limiting
 
 Solutions for the above are:
-1. Spin up max 2000 goroutines
+1. Spin up max 1000 goroutines
 2. Add a random sleep between 200-100msec before initiating a request so that not all requests are made at once
 
 However due to engadgets policies you may still be rate limited if you run the script too often at once, in that case a log is placed
@@ -70,19 +71,19 @@ func main() {
 	// word map to store the count of each word, made global so all goroutines can read/write concurrently
 	wordMap := make(map[string]int, 0)
 
-	// Concurrently process 2000 essays at a time to avoid too many goroutines and rate limit issues with engagdet
+	// Concurrently process 1000 essays at a time to avoid too many goroutines and rate limit issues with engagdet
 	essayBatch := make([][]string, 0)
-	for i := 0; i < len(*essays); i += 2000 {
-		endBatch := i + 2000
+	for i := 0; i < len(*essays); i += MaxGoRoutines {
+		endBatch := i + MaxGoRoutines
 		if endBatch > len(*essays) {
 			endBatch = len(*essays)
 		}
 		essayBatch = append(essayBatch, (*essays)[i:endBatch])
 	}
 
-	// Fetch essays concurrently, 2000 at a time, then wait for all to finish then process next batch
+	// Fetch essays concurrently, 1000 at a time, then wait for all to finish then process next batch
 	for i, batch := range essayBatch {
-		// Wait group will have length max 2000 at a time, wait for all to finish before proceeding to next batch
+		// Wait group will have length max 1000 at a time, wait for all to finish before proceeding to next batch
 		var wg sync.WaitGroup
 		wg.Add(len(batch))
 
